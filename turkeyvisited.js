@@ -1,97 +1,212 @@
-const HOVER_COLOR = "#EFAE88";
+const DATA_KEY = "turkeyvisitedData";
 const MAP_COLOR = "#fff2e3";
-let cityCount = localStorage.getItem("selectedCities")
-  ? JSON.parse(localStorage.getItem("selectedCities")).length
-  : 0;
-document.getElementById("city_count").innerHTML = cityCount;
+const DEFAULT_VISITED_COLOR = "#EFAE88";
+const DEFAULT_PLANNED_COLOR = "#6B9BD1";
+
+let activeMode = "visited";
+let mapPaths = null;
+let appData;
+
+appData = loadData();
+
+function loadData() {
+  const stored = localStorage.getItem(DATA_KEY);
+  if (stored) {
+    const data = JSON.parse(stored);
+    data.visited = data.visited || [];
+    data.planned = data.planned || [];
+    data.colors = data.colors || {};
+    data.colors.visited = data.colors.visited || DEFAULT_VISITED_COLOR;
+    data.colors.planned = data.colors.planned || DEFAULT_PLANNED_COLOR;
+    return data;
+  }
+
+  const legacy = localStorage.getItem("selectedCities");
+  const data = {
+    visited: legacy ? JSON.parse(legacy) : [],
+    planned: [],
+    colors: {
+      visited: DEFAULT_VISITED_COLOR,
+      planned: DEFAULT_PLANNED_COLOR,
+    },
+  };
+
+  if (legacy) {
+    localStorage.removeItem("selectedCities");
+  }
+
+  saveData(data);
+  return data;
+}
+
+function saveData(data) {
+  appData = data;
+  localStorage.setItem(DATA_KEY, JSON.stringify(data));
+}
+
+function getProvinceStatus(name) {
+  if (appData.visited.includes(name)) return "visited";
+  if (appData.planned.includes(name)) return "planned";
+  return "none";
+}
+
+function getProvinceColor(status) {
+  if (status === "visited") return appData.colors.visited;
+  if (status === "planned") return appData.colors.planned;
+  return MAP_COLOR;
+}
+
+function removeFromList(list, name) {
+  const index = list.indexOf(name);
+  if (index !== -1) {
+    list.splice(index, 1);
+  }
+}
+
+function updateCounts() {
+  document.getElementById("visited_count").innerHTML = appData.visited.length;
+  document.getElementById("planned_count").innerHTML = appData.planned.length;
+}
+
+function updateLegend() {
+  document.getElementById("legend_visited_swatch").style.backgroundColor =
+    appData.colors.visited;
+  document.getElementById("legend_planned_swatch").style.backgroundColor =
+    appData.colors.planned;
+  document.getElementById("legend_none_swatch").style.backgroundColor = MAP_COLOR;
+}
+
+function setActiveMode(mode) {
+  activeMode = mode;
+  document.getElementById("mode_visited").classList.toggle("active", mode === "visited");
+  document.getElementById("mode_planned").classList.toggle("active", mode === "planned");
+}
+
+function applyPathFill(selection, d) {
+  selection.attr("fill", getProvinceColor(d.status));
+}
+
+function refreshMapColors() {
+  if (!mapPaths) return;
+  mapPaths.each(function (d) {
+    applyPathFill(d3.select(this), d);
+  });
+}
+
+function syncColorInputs() {
+  document.getElementById("visited_color").value = appData.colors.visited;
+  document.getElementById("planned_color").value = appData.colors.planned;
+}
+
+function initControls() {
+  setActiveMode("visited");
+  syncColorInputs();
+  updateCounts();
+  updateLegend();
+
+  document.getElementById("mode_visited").addEventListener("click", function () {
+    setActiveMode("visited");
+  });
+
+  document.getElementById("mode_planned").addEventListener("click", function () {
+    setActiveMode("planned");
+  });
+
+  document.getElementById("visited_color").addEventListener("change", function (event) {
+    appData.colors.visited = event.target.value;
+    saveData(appData);
+    refreshMapColors();
+    updateLegend();
+  });
+
+  document.getElementById("planned_color").addEventListener("change", function (event) {
+    appData.colors.planned = event.target.value;
+    saveData(appData);
+    refreshMapColors();
+    updateLegend();
+  });
+}
+
+initControls();
 
 d3.json("tr-cities.json").then(function (data) {
-  let width = 1200;
-  height = 800;
-  let projection = d3.geoEqualEarth();
+  const width = 1200;
+  const height = 800;
+  const projection = d3.geoEqualEarth();
   projection.fitSize([width, height], data);
-  let path = d3.geoPath().projection(projection);
+  const path = d3.geoPath().projection(projection);
 
-  let svg = d3
+  const svg = d3
     .select("#map_container")
     .append("svg")
     .attr("width", width)
-    .attr("height", height);
+    .attr("height", height)
+    .attr("viewBox", "0 0 " + width + " " + height)
+    .attr("preserveAspectRatio", "xMidYMid meet");
 
-  let g = svg
+  mapPaths = svg
     .append("g")
     .selectAll("path")
     .data(data.features)
-    .join("path")
+    .enter()
+    .append("path")
     .attr("d", path)
-    .attr("fill", function (d, i) {
-      if (localStorage.getItem("selectedCities")) {
-        if (
-          JSON.parse(localStorage.getItem("selectedCities")).includes(
-            d.properties.name
-          )
-        ) {
-          d.noFill = true;
-          return HOVER_COLOR;
-        } else return MAP_COLOR;
-      } else return MAP_COLOR;
+    .each(function (d) {
+      d.status = getProvinceStatus(d.properties.name);
+    })
+    .attr("fill", function (d) {
+      return getProvinceColor(d.status);
     })
     .attr("stroke", "#000")
-    .on("mouseover", function (d, i) {
-      d3.select(this).attr("fill", HOVER_COLOR);
+    .on("mouseover", function (d) {
+      const hoverColor =
+        d.status === "none" ? getProvinceColor(activeMode) : getProvinceColor(d.status);
+      d3.select(this).attr("fill", hoverColor);
     })
-    .on("mouseout", function (d, i) {
-      if (!d.noFill) d3.select(this).attr("fill", MAP_COLOR);
+    .on("mouseout", function (d) {
+      applyPathFill(d3.select(this), d);
     })
-    .on("click", function (d, i) {
-      d.noFill = d.noFill || false;
-      if (!d.noFill) {
-        cityCount++;
-        document.getElementById("city_count").innerHTML = cityCount;
-        d3.select(this).attr("fill", HOVER_COLOR);
+    .on("click", function (d) {
+      const name = d.properties.name;
 
-        //add selected city to localStorage
-        if (localStorage.getItem("selectedCities")) {
-          let tempSelectedCities = JSON.parse(
-            localStorage.getItem("selectedCities")
-          );
-          if (tempSelectedCities.includes(d.properties.name)) return;
-          tempSelectedCities.push(d.properties.name);
-          localStorage.setItem(
-            "selectedCities",
-            JSON.stringify(tempSelectedCities)
-          );
+      if (d.status === activeMode) {
+        if (activeMode === "visited") {
+          removeFromList(appData.visited, name);
         } else {
-          let tempArr = [];
-          tempArr.push(d.properties.name);
-          localStorage.setItem("selectedCities", JSON.stringify(tempArr));
+          removeFromList(appData.planned, name);
         }
+        d.status = "none";
+      } else if (d.status === "none") {
+        if (activeMode === "visited") {
+          appData.visited.push(name);
+        } else {
+          appData.planned.push(name);
+        }
+        d.status = activeMode;
       } else {
-        cityCount--;
-        document.getElementById("city_count").innerHTML = cityCount;
-        d3.select(this).attr("fill", MAP_COLOR);
-
-        //remove from localStorage
-        let tempSelectedCities = JSON.parse(
-          localStorage.getItem("selectedCities")
-        );
-        const index = tempSelectedCities.indexOf(d.properties.name);
-        if (index !== -1) {
-          tempSelectedCities.splice(index, 1);
+        if (d.status === "visited") {
+          removeFromList(appData.visited, name);
+        } else {
+          removeFromList(appData.planned, name);
         }
-        localStorage.setItem(
-          "selectedCities",
-          JSON.stringify(tempSelectedCities)
-        );
+
+        if (activeMode === "visited") {
+          appData.visited.push(name);
+        } else {
+          appData.planned.push(name);
+        }
+        d.status = activeMode;
       }
-      d.noFill = !d.noFill;
+
+      saveData(appData);
+      applyPathFill(d3.select(this), d);
+      updateCounts();
     });
 
-  console.log(data.features.map((f) => f.properties.name));
+  const labels = svg.append("g");
 
-  g = svg.append("g");
-
-  g.selectAll("text")
+  labels
+    .selectAll("text")
     .data(data.features)
     .enter()
     .append("text")
@@ -106,17 +221,40 @@ d3.json("tr-cities.json").then(function (data) {
     })
     .attr("text-anchor", "middle")
     .attr("font-size", "10pt")
-    .attr("style", "color: black;")
-    .attr("style", "pointer-events: none;");
+    .attr("fill", "black")
+    .style("pointer-events", "none");
+}).catch(function (error) {
+  console.error("Harita verisi yuklenemedi:", error);
+  document.getElementById("map_container").insertAdjacentHTML(
+    "beforeend",
+    "<p id=\"map_error\">Harita yüklenemedi. Sayfayı bir yerel sunucu üzerinden açın (örneğin: python3 -m http.server 8765).</p>"
+  );
 });
 
 function downloadMap() {
-  let div = document.getElementById("map_container");
-  html2canvas(div).then(function (canvas) {
-    var destCanvas = document.createElement("canvas");
+  const exportDiv = document.createElement("div");
+  exportDiv.style.background = "#e3e2df";
+  exportDiv.style.display = "inline-block";
+  exportDiv.style.padding = "0";
+
+  const mapClone = document.getElementById("map_container").cloneNode(true);
+  const legendClone = document.getElementById("map_legend").cloneNode(true);
+  legendClone.style.marginTop = "8px";
+
+  exportDiv.appendChild(mapClone);
+  exportDiv.appendChild(legendClone);
+  exportDiv.style.position = "fixed";
+  exportDiv.style.left = "-9999px";
+  exportDiv.style.top = "0";
+  document.body.appendChild(exportDiv);
+
+  html2canvas(exportDiv).then(function (canvas) {
+    document.body.removeChild(exportDiv);
+
+    const destCanvas = document.createElement("canvas");
     destCanvas.width = canvas.width;
     destCanvas.height = canvas.height;
-    var destCtx = destCanvas.getContext("2d");
+    const destCtx = destCanvas.getContext("2d");
     destCtx.drawImage(canvas, 0, 0);
 
     const ctx = destCanvas.getContext("2d");
@@ -124,9 +262,12 @@ function downloadMap() {
     ctx.font = "2em Calibri";
     ctx.fillStyle = "black";
     ctx.textAlign = "start";
-    var textWidth = ctx.measureText("ozanyerli.github.io/turkeyvisited");
     ctx.fillText("ozanyerli.github.io/turkeyvisited", 10, canvas.height - 25);
-    ctx.fillText(cityCount + "/81", 10, 5);
+    ctx.fillText(
+      "Ziyaret: " + appData.visited.length + "/81 | Plan: " + appData.planned.length + "/81",
+      10,
+      5
+    );
 
     destCanvas.toBlob(function (blob) {
       saveAs(blob, "turkeyvisited.png");
@@ -135,7 +276,7 @@ function downloadMap() {
 }
 
 function resetButton() {
-  localStorage.removeItem("selectedCities")
-  cityCount = 0; document.getElementById("city_count").innerHTML = cityCount;
-  location.reload()
+  localStorage.removeItem(DATA_KEY);
+  localStorage.removeItem("selectedCities");
+  location.reload();
 }

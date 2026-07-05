@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="tr">
 
 <head>
   <meta charset="utf-8">
@@ -8,12 +8,29 @@
 
   <script src="https://d3js.org/d3.v5.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.3.2/html2canvas.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/g/filesaver.js" s></script>
+  <script src="https://cdn.jsdelivr.net/g/filesaver.js"></script>
 </head>
 
 <body>
 
-  <div id="welcome_text">Ziyaret ettiğiniz illeri aşağıdan işaretleyebilirsiniz!</div>
+  <div id="welcome_text">Mod seçin, ardından haritadan illeri işaretleyin!</div>
+
+  <div id="controls_panel">
+    <div id="mode_group">
+      <button id="mode_visited" type="button">Ziyaret Ettim</button>
+      <button id="mode_planned" type="button">Gitmeyi Planlıyorum</button>
+    </div>
+    <div id="color_group">
+      <label class="color_label">
+        Ziyaret rengi
+        <input id="visited_color" type="color" value="#EFAE88">
+      </label>
+      <label class="color_label">
+        Plan rengi
+        <input id="planned_color" type="color" value="#6B9BD1">
+      </label>
+    </div>
+  </div>
 
   <div id="map_container"></div>
 
@@ -23,7 +40,25 @@
   </div>
   <button id="download_button" onclick="downloadMap()">Haritayı İndir</button>
 
-  <div id="city_count_text">Seçilen il sayısı:&nbsp;<span id="city_count">0</span>/81</div>
+  <div id="map_legend">
+    <div class="legend_item">
+      <span id="legend_visited_swatch" class="legend_swatch"></span>
+      <span>Ziyaret edilen</span>
+    </div>
+    <div class="legend_item">
+      <span id="legend_planned_swatch" class="legend_swatch"></span>
+      <span>Gitmeyi planlanan</span>
+    </div>
+    <div class="legend_item">
+      <span id="legend_none_swatch" class="legend_swatch"></span>
+      <span>Ziyaret edilmemiş</span>
+    </div>
+  </div>
+
+  <div id="city_count_text">
+    <div>Ziyaret edilen:&nbsp;<span id="visited_count">0</span>/81</div>
+    <div>Planlanan:&nbsp;<span id="planned_count">0</span>/81</div>
+  </div>
 
   <script src="turkeyvisited.js"></script>
 
